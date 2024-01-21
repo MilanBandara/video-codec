@@ -44,7 +44,7 @@ def get_dct_blocks(blocks):
 
 def quantize_blocks(dct_blocks,level): 
 
-    quantization_matrix = high_intensity_lum_matrix = np.array([[16,  11,  10,  16,  24,  40,  51,  61], 
+    quantization_matrix = np.array([[16,  11,  10,  16,  24,  40,  51,  61], 
                                 [12,  12,  14,  19,  26,  58,  60,  55],
                                 [14,  13,  16,  24,  40,  57,  69,  56], 
                                 [14,  17,  22,  29,  51,  87,  80,  62], 
