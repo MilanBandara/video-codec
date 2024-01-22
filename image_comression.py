@@ -1,5 +1,5 @@
 import numpy as np
-from scipy.fft import dctn,dct,idct
+from scipy.fft import dctn,dct,idctn
 from huffman_code import *
 
 def get_blocks(image_array):
@@ -37,7 +37,8 @@ def get_dct_blocks(blocks):
     dct_blocks = np.empty((0, 8,8))  # Initialize with the expected final shape
 
     for index,block in enumerate(blocks):
-        dct_image = dct(dct(block.astype(float), axis=0), axis=1)/2
+        # dct_image = dct(dct(block.astype(float), axis=0), axis=1)/2
+        dct_image = dctn(block, type=2, norm='ortho')
         # dct_image = np.round(dct_image)
         dct_blocks = np.concatenate((dct_blocks, [dct_image]), axis=0)
     return dct_blocks
@@ -55,18 +56,45 @@ def quantize_blocks(dct_blocks,level):
                                 
     if level == "high":
         quantization_matrix = quantization_matrix*1
-    elif level == "mid":
-        quantization_matrix = quantization_matrix*10
-    else:
-        quantization_matrix = quantization_matrix*100
+    if level == "mid":
+        quantization_matrix = quantization_matrix*5
+    if level == "low":
+        quantization_matrix = quantization_matrix*20
     
     
-    quntized_blocks = np.empty((0, 8,8))  # Initialize with the expected final shape
+    # quntized_blocks = np.empty((0, 8,8))  # Initialize with the expected final shape
 
-    for index,block in enumerate(dct_blocks):
-        quntized = block/quantization_matrix
-        quntized = np.round(quntized)
-        quntized_blocks = np.concatenate((quntized_blocks, [quntized]), axis=0)
+    # for index,block in enumerate(dct_blocks):
+    #     quntized = block/quantization_matrix
+    #     quntized = np.round(quntized)
+    #     quntized_blocks = np.concatenate((quntized_blocks, [quntized]), axis=0)
+
+    quntized_blocks = dct_blocks/quantization_matrix
+    quntized_blocks = quntized_blocks.astype(int)
+    return quntized_blocks
+
+
+def quantize_blocks_custom(dct_blocks,scaler): 
+
+    quantization_matrix = np.array([[16,  11,  10,  16,  24,  40,  51,  61], 
+                                [12,  12,  14,  19,  26,  58,  60,  55],
+                                [14,  13,  16,  24,  40,  57,  69,  56], 
+                                [14,  17,  22,  29,  51,  87,  80,  62], 
+                                [18,  22,  37,  56,  68, 109, 103,  77], 
+                                [24,  35,  55,  64,  81, 104, 113,  92], 
+                                [49,  64,  78,  87, 103, 121, 120, 101], 
+                                [72,  92,  95,  98, 112, 100, 103,  99]])
+                                
+    
+    quantization_matrix = quantization_matrix*scaler
+
+    # quntized_blocks = np.empty((0, 8,8))  # Initialize with the expected final shape
+
+    # for index,block in enumerate(dct_blocks):
+    #     quntized = block/quantization_matrix
+    #     quntized = np.round(quntized)
+    #     quntized_blocks = np.concatenate((quntized_blocks, [quntized]), axis=0)
+    quntized_blocks = dct_blocks/quantization_matrix
 
     quntized_blocks = quntized_blocks.astype(int)
     return quntized_blocks
@@ -110,7 +138,7 @@ def reconstruct_from_blocks(result_blocks):
     idct_blocks_low = np.empty((0, 8,8))  # Initialize with the expected final shape
 
     for index,block in enumerate(result_blocks):
-        idct_image = idct(idct(block, axis=1), axis=0)
+        idct_image = idctn(block, type=2, norm='ortho')
         idct_blocks_low = np.concatenate((idct_blocks_low, [idct_image]), axis=0)
 
     reconstructed = np.zeros((640,640))
@@ -126,3 +154,10 @@ def reconstruct_from_blocks(result_blocks):
             block_number = block_number + 1
     
     return reconstructed
+
+def calculate_psnr(original_image, reconstructed_image):
+    # Assuming images are numpy arrays with the same shape and data type
+    mse = np.mean((original_image - reconstructed_image) ** 2)
+    max_pixel_value = np.max(original_image)
+    psnr = 10 * np.log10((max_pixel_value ** 2) / mse)
+    return psnr
