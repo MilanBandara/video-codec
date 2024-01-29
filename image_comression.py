@@ -8,8 +8,8 @@ def get_blocks(image_array):
     pad_height = (8 - height % 8) % 8
     pad_width = (8 - width % 8) % 8
 
-    print(height, width)
-    print(pad_height,pad_width)
+    # print(height, width)
+    # print(pad_height,pad_width)
 
     # Pad the image with zeros
     padded_image = np.pad(image_array, ((0, pad_height), (0, pad_width)), 'constant')
@@ -18,9 +18,9 @@ def get_blocks(image_array):
     num_blocks_h = padded_image.shape[0] // 8
     num_blocks_w = padded_image.shape[1] // 8
 
-    blocks = np.empty((0, 8, 8))  # Initialize with the expected final shape
+    blocks = np.zeros((6400, 8, 8))  # Initialize with the expected final shape
 
-
+    itter = 0
     for i in range(num_blocks_h):
         for j in range(num_blocks_w):
             start_x = j*8
@@ -28,19 +28,41 @@ def get_blocks(image_array):
             start_y = i*8
             end_y = start_y+8
             block = padded_image[start_x:end_x,start_y:end_y]
-            blocks = np.concatenate((blocks, [block]), axis=0)
+            blocks[itter] = block
+            itter = itter + 1
     return blocks
+
+
+def reconstruct_from_blocks_test(result_blocks):
+
+    idct_blocks_low = result_blocks  # Initialize with the expected final shape
+
+    reconstructed = np.zeros((640,640))
+
+    block_number = 0
+    for i in range(80):
+        for j in range(80):
+            start_x = j*8
+            end_x = start_x + 8
+            start_y = i*8
+            end_y = start_y+8
+            reconstructed[start_x:end_x,start_y:end_y] = idct_blocks_low[block_number]
+            block_number = block_number + 1
+    
+    return reconstructed
+
+def dct_for_one_block(block):
+    dct_image = dctn(block, type=2, norm='ortho')
+    return dct_image
 
 def get_dct_blocks(blocks):
     #perform DCT on blocks
 
-    dct_blocks = np.empty((0, 8,8))  # Initialize with the expected final shape
+    dct_blocks = np.zeros((6400, 8,8))  # Initialize with the expected final shape
 
     for index,block in enumerate(blocks):
-        # dct_image = dct(dct(block.astype(float), axis=0), axis=1)/2
         dct_image = dctn(block, type=2, norm='ortho')
-        # dct_image = np.round(dct_image)
-        dct_blocks = np.concatenate((dct_blocks, [dct_image]), axis=0)
+        dct_blocks[index] = dct_image
     return dct_blocks
 
 def quantize_blocks(dct_blocks,level): 
@@ -60,19 +82,34 @@ def quantize_blocks(dct_blocks,level):
         quantization_matrix = quantization_matrix*5
     if level == "low":
         quantization_matrix = quantization_matrix*20
-    
-    
-    # quntized_blocks = np.empty((0, 8,8))  # Initialize with the expected final shape
-
-    # for index,block in enumerate(dct_blocks):
-    #     quntized = block/quantization_matrix
-    #     quntized = np.round(quntized)
-    #     quntized_blocks = np.concatenate((quntized_blocks, [quntized]), axis=0)
 
     quntized_blocks = dct_blocks/quantization_matrix
     quntized_blocks = quntized_blocks.astype(int)
     return quntized_blocks
 
+def dequntize_blocks(result_blocks,level):
+    quantization_matrix = np.array([[16,  11,  10,  16,  24,  40,  51,  61], 
+                                [12,  12,  14,  19,  26,  58,  60,  55],
+                                [14,  13,  16,  24,  40,  57,  69,  56], 
+                                [14,  17,  22,  29,  51,  87,  80,  62], 
+                                [18,  22,  37,  56,  68, 109, 103,  77], 
+                                [24,  35,  55,  64,  81, 104, 113,  92], 
+                                [49,  64,  78,  87, 103, 121, 120, 101], 
+                                [72,  92,  95,  98, 112, 100, 103,  99]])
+                                
+    if level == "high":
+        quantization_matrix = quantization_matrix*1
+    elif level == "mid":
+        quantization_matrix = quantization_matrix*5
+    elif level == "low":
+        quantization_matrix = quantization_matrix*20
+    else:
+        quantization_matrix = quantization_matrix*level
+
+    dequntized_blocks = result_blocks*quantization_matrix
+
+    return dequntized_blocks
+    
 
 def quantize_blocks_custom(dct_blocks,scaler): 
 
@@ -95,6 +132,7 @@ def quantize_blocks_custom(dct_blocks,scaler):
     #     quntized = np.round(quntized)
     #     quntized_blocks = np.concatenate((quntized_blocks, [quntized]), axis=0)
     quntized_blocks = dct_blocks/quantization_matrix
+    # quntized_blocks = dct_blocks
 
     quntized_blocks = quntized_blocks.astype(int)
     return quntized_blocks
@@ -135,11 +173,15 @@ def decode_blocks(location,huffman_codes_list):
     return result_blocks
 
 def reconstruct_from_blocks(result_blocks):
-    idct_blocks_low = np.empty((0, 8,8))  # Initialize with the expected final shape
+
+    idct_blocks_low = np.zeros((6400, 8,8))  # Initialize with the expected final shape
 
     for index,block in enumerate(result_blocks):
         idct_image = idctn(block, type=2, norm='ortho')
-        idct_blocks_low = np.concatenate((idct_blocks_low, [idct_image]), axis=0)
+        # idct_blocks_low = np.concatenate((idct_blocks_low, [idct_image]), axis=0)
+        idct_blocks_low[index] = idct_image
+
+    # idct_blocks_low = idct_blocks_low*quantization_matrix
 
     reconstructed = np.zeros((640,640))
 
@@ -299,13 +341,29 @@ def decompress_run_length_blocks(location):
 
     block_strings = text_string.split("\n")
 
-    result_blocks = np.empty((0, 8,8))
+    result_blocks = np.zeros((6400, 8,8))
 
     for index,string in enumerate(block_strings):
         decompressed_block = decompress_bit_sequence(string)
-        result_blocks = np.concatenate((result_blocks, [decompressed_block]), axis=0)
+        # result_blocks = np.concatenate((result_blocks, [decompressed_block]), axis=0)
+        result_blocks[index] = decompressed_block
     
     result_blocks = result_blocks.astype(int)
     return result_blocks
 
 
+def compress_complete_image(complete_image,scaler,location):
+    blocks = get_blocks(complete_image)
+    dct_blocks = get_dct_blocks(blocks)
+    high_quntized_blocks = quantize_blocks_custom(dct_blocks,scaler)
+    result_string_high = compress_run_length_blocks(high_quntized_blocks,location)
+
+    return result_string_high
+
+def decompress_complete_image(location,level):
+    result_blocks = decompress_run_length_blocks(location)
+    #add the dequantization step here
+    result_blocks = dequntize_blocks(result_blocks,level)
+    reconstructed_image = reconstruct_from_blocks(result_blocks)
+
+    return reconstructed_image
